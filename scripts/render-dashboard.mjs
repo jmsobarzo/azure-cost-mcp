@@ -164,7 +164,7 @@ function renderTenantShareCard(tenants) {
     )
     .join("");
 
-  return `<div class="card panel">
+  return `<div class="card panel" id="tenant-share-card">
       <h2>Participación de costo por tenant</h2>
       <p class="panel-sub">Mes en curso &middot; ${money0(total)} combinados entre ${tenants.length} tenants</p>
       <div class="donut-panel-body">
@@ -419,20 +419,130 @@ function renderActivityList(items) {
 }
 
 // ---------------------------------------------------------------------
-// Barra de navegación rápida entre tenants
+// Filtro de tenants (selección de clientes) — pastillas tipo toggle,
+// con "Todos" + una por tenant. La interacción vive en FILTER_SCRIPT.
 // ---------------------------------------------------------------------
-function renderTenantNav(tenants) {
+function renderTenantFilter(tenants) {
   if (tenants.length < 2) return "";
-  return `<nav class="tenant-nav" aria-label="Ir a un tenant">
-      ${tenants
-        .map(
-          (t, i) =>
-            `<a class="tenant-nav-pill tc" data-color="${i % 3}" href="#tenant-${slugify(t.tenantName)}"><span class="dot"></span>${esc(
-              t.tenantName
-            )}</a>`
-        )
-        .join("")}
-    </nav>`;
+  return `<div class="tenant-filter" role="group" aria-label="Filtrar por cliente">
+      <div class="tenant-filter-head">
+        <span class="tenant-filter-label">Clientes</span>
+        <span class="tenant-filter-meta" id="tenant-filter-meta">${tenants.length} tenants</span>
+      </div>
+      <div class="tenant-filter-pills">
+        <button type="button" class="tenant-filter-pill pill-all" data-slug="__all__" aria-pressed="true">Todos</button>
+        ${tenants
+          .map(
+            (t, i) =>
+              `<button type="button" class="tenant-filter-pill tc" data-color="${i % 3}" data-slug="${slugify(
+                t.tenantName
+              )}" aria-pressed="true"><span class="dot"></span>${esc(t.tenantName)}</button>`
+          )
+          .join("")}
+      </div>
+    </div>`;
+}
+
+function renderTenantFilterScript(tenants) {
+  if (tenants.length < 2) return "";
+  const summary = tenants.map((t) => ({
+    slug: slugify(t.tenantName),
+    name: t.tenantName,
+    cost: t.totalCostMonth,
+    forecast: t.forecast.reduce((s, d) => s + d.cost, 0),
+    newCount: (t.newResources || []).length,
+    budgetPct: t.budget ? t.budget.percentUsed : null,
+  }));
+  return `<script>
+(function () {
+  var DATA = ${JSON.stringify(summary).replace(/</g, "\\u003c")};
+  var selected = new Set(DATA.map(function (t) { return t.slug; }));
+  var pills = Array.prototype.slice.call(document.querySelectorAll('.tenant-filter-pill'));
+  var intFmt = new Intl.NumberFormat('es-CL', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  var pctFmt = new Intl.NumberFormat('es-CL', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+
+  function money0(n) { return 'US$ ' + intFmt.format(Math.round(n)); }
+  function pct1(n) { return pctFmt.format(n) + '%'; }
+
+  function render() {
+    DATA.forEach(function (t) {
+      var section = document.getElementById('tenant-' + t.slug);
+      if (section) section.style.display = selected.has(t.slug) ? '' : 'none';
+    });
+
+    pills.forEach(function (p) {
+      var slug = p.getAttribute('data-slug');
+      var on = slug === '__all__' ? selected.size === DATA.length : selected.has(slug);
+      p.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+
+    var shareCard = document.getElementById('tenant-share-card');
+    if (shareCard) shareCard.style.display = selected.size === DATA.length ? '' : 'none';
+
+    var subset = DATA.filter(function (t) { return selected.has(t.slug); });
+    var totalCost = subset.reduce(function (s, t) { return s + t.cost; }, 0);
+    var totalForecast = subset.reduce(function (s, t) { return s + t.forecast; }, 0);
+    var totalNew = subset.reduce(function (s, t) { return s + t.newCount; }, 0);
+
+    var elCostLabel = document.getElementById('sum-total-cost-label');
+    if (elCostLabel) elCostLabel.textContent = selected.size === DATA.length ? 'Costo total \\u2013 todos los tenants' : 'Costo total \\u2013 clientes seleccionados';
+    var elCost = document.getElementById('sum-total-cost');
+    if (elCost) elCost.textContent = money0(totalCost);
+    var elCostSub = document.getElementById('sum-total-cost-sub');
+    if (elCostSub) elCostSub.textContent = subset.length + (subset.length === 1 ? ' tenant' : ' tenants') + ' de Azure AD, mes en curso';
+    var elForecast = document.getElementById('sum-total-forecast');
+    if (elForecast) elForecast.textContent = money0(totalForecast);
+    var elNew = document.getElementById('sum-total-new');
+    if (elNew) elNew.textContent = String(totalNew);
+
+    var withBudget = subset.filter(function (t) { return t.budgetPct !== null; });
+    var alerts = withBudget.filter(function (t) { return t.budgetPct >= 85; });
+    var critical = alerts.filter(function (t) { return t.budgetPct >= 100; });
+    var status = 'good', value = 'Sin alertas', sub;
+    if (!withBudget.length) {
+      sub = subset.length ? 'Ningún tenant seleccionado tiene un budget configurado todavía.' : 'Selecciona al menos un tenant.';
+    } else if (!alerts.length) {
+      sub = 'Todos los presupuestos configurados están dentro de rango.';
+    } else {
+      status = critical.length ? 'critical' : 'warning';
+      value = alerts.length + ' de ' + withBudget.length + (withBudget.length === 1 ? ' tenant' : ' tenants');
+      sub = alerts.map(function (t) { return t.name + ' (' + pct1(t.budgetPct) + ')'; }).join(' \\u00b7 ');
+    }
+    var elAlertsValue = document.getElementById('sum-alerts-value');
+    if (elAlertsValue) elAlertsValue.textContent = value;
+    var elAlertsSub = document.getElementById('sum-alerts-sub');
+    if (elAlertsSub) elAlertsSub.textContent = sub;
+    var elAlertsPill = document.getElementById('sum-alerts-pill');
+    if (elAlertsPill) {
+      elAlertsPill.className = 'status-pill status-' + status;
+      elAlertsPill.textContent = status === 'good' ? 'OK' : status === 'warning' ? 'Atención' : 'Crítico';
+    }
+
+    var elMeta = document.getElementById('tenant-filter-meta');
+    if (elMeta) {
+      elMeta.textContent = selected.size === DATA.length
+        ? DATA.length + ' tenants'
+        : 'Mostrando ' + selected.size + ' de ' + DATA.length + ' tenants';
+    }
+  }
+
+  pills.forEach(function (p) {
+    p.addEventListener('click', function () {
+      var slug = p.getAttribute('data-slug');
+      if (slug === '__all__') {
+        selected = new Set(DATA.map(function (t) { return t.slug; }));
+      } else if (selected.has(slug)) {
+        if (selected.size > 1) selected.delete(slug);
+      } else {
+        selected.add(slug);
+      }
+      render();
+    });
+  });
+
+  render();
+})();
+</script>`;
 }
 
 // ---------------------------------------------------------------------
@@ -457,28 +567,28 @@ function renderSummary(tenants) {
     alertSub = alerts.map((t) => `${esc(t.tenantName)} (${pct(t.budget.percentUsed)})`).join(" &middot; ");
   }
 
-  return `<div class="summary-grid">
+  return `<div class="summary-grid" id="summary-grid">
       <div class="card summary-tile">
-        <div class="label">Costo total &ndash; todos los tenants</div>
-        <div class="value">${money0(totalCost)}</div>
-        <div class="sub">${tenants.length} tenant${tenants.length === 1 ? "" : "s"} de Azure AD, mes en curso</div>
+        <div class="label" id="sum-total-cost-label">Costo total &ndash; todos los tenants</div>
+        <div class="value" id="sum-total-cost">${money0(totalCost)}</div>
+        <div class="sub" id="sum-total-cost-sub">${tenants.length} tenant${tenants.length === 1 ? "" : "s"} de Azure AD, mes en curso</div>
       </div>
       <div class="card summary-tile">
         <div class="label">Pronóstico a 30 días</div>
-        <div class="value">${money0(totalForecast)}</div>
+        <div class="value" id="sum-total-forecast">${money0(totalForecast)}</div>
         <div class="sub">Suma de forecasts de Cost Management</div>
       </div>
       <div class="card summary-tile">
         <div class="label">Recursos nuevos (30 días)</div>
-        <div class="value">${totalNew}</div>
+        <div class="value" id="sum-total-new">${totalNew}</div>
         <div class="sub">Detectados vía Activity Log, todos los tenants</div>
       </div>
       <div class="card summary-tile">
         <div class="label">Alertas de presupuesto</div>
-        <div class="stat-mini-head"><div class="value">${alertValue}</div><span class="status-pill status-${alertStatus}">${
+        <div class="stat-mini-head"><div class="value" id="sum-alerts-value">${alertValue}</div><span class="status-pill status-${alertStatus}" id="sum-alerts-pill">${
     alertStatus === "good" ? "OK" : alertStatus === "warning" ? "Atención" : "Crítico"
   }</span></div>
-        <div class="sub">${alertSub}</div>
+        <div class="sub" id="sum-alerts-sub">${alertSub}</div>
       </div>
     </div>`;
 }
@@ -650,10 +760,17 @@ const CSS = `
   @keyframes pulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--status-good) 45%, transparent); } 70% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--status-good) 0%, transparent); } 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--status-good) 0%, transparent); } }
   @media (prefers-reduced-motion: reduce) { .live-pill .pulse { animation: none; } }
 
-  .tenant-nav { display: flex; flex-wrap: wrap; gap: 8px; }
-  .tenant-nav-pill { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 600; color: var(--text-primary); text-decoration: none; background: var(--surface-1); border: 1px solid var(--border); border-radius: 999px; padding: 7px 14px 7px 11px; transition: border-color .15s ease, background .15s ease; }
-  .tenant-nav-pill:hover, .tenant-nav-pill:focus-visible { border-color: var(--tenant-soft-border); background: var(--tenant-soft-bg); outline: none; }
-  .tenant-nav-pill .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--tenant-accent); flex: none; }
+  .tenant-filter { display: flex; flex-direction: column; gap: 10px; }
+  .tenant-filter-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+  .tenant-filter-label { font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
+  .tenant-filter-meta { font-size: 12px; color: var(--text-muted); font-family: var(--font-mono); white-space: nowrap; }
+  .tenant-filter-pills { display: flex; flex-wrap: wrap; gap: 8px; }
+  .tenant-filter-pill { display: inline-flex; align-items: center; gap: 7px; font-family: inherit; font-size: 13px; font-weight: 600; color: var(--text-primary); background: var(--surface-1); border: 1px solid var(--border); border-radius: 999px; padding: 7px 14px 7px 11px; cursor: pointer; transition: border-color .15s ease, background .15s ease, opacity .15s ease; }
+  .tenant-filter-pill .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--tenant-accent); flex: none; }
+  .tenant-filter-pill[aria-pressed="true"] { border-color: var(--tenant-soft-border); background: var(--tenant-soft-bg); }
+  .tenant-filter-pill.pill-all[aria-pressed="true"] { border-color: var(--text-primary); background: var(--surface-2); }
+  .tenant-filter-pill[aria-pressed="false"] { opacity: .48; }
+  .tenant-filter-pill:hover, .tenant-filter-pill:focus-visible { outline: none; border-color: var(--tenant-soft-border); }
 
   .summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
   @media (max-width: 860px) { .summary-grid { grid-template-columns: 1fr 1fr; } }
@@ -764,15 +881,16 @@ const body = `
       </div>
     </header>
 
+    ${renderTenantFilter(data.tenants)}
     ${renderSummary(data.tenants)}
     ${renderTenantShareCard(data.tenants)}
-    ${renderTenantNav(data.tenants)}
 
     ${data.tenants.map((t, i) => renderTenantSection(t, i)).join("\n")}
 
     <footer class="page-footer">Generado con azure-cost-mcp &middot; Azure Resource Manager &middot; Cost Management API &middot; se actualiza automáticamente cada 12 horas</footer>
   </div>
-</div>`;
+</div>
+${renderTenantFilterScript(data.tenants)}`;
 
 const head = `${FONT_LINK}
 <title>Panel de Costos Azure</title>
