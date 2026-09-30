@@ -4,6 +4,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { registerTools } from "./tools.js";
 import { registerReportTool } from "./report.js";
 import { registerPartnerTools } from "./partnerCenter.js";
+import { registerEmailTool } from "./email.js";
 
 const server = new McpServer({
   name: "azure-cost-mcp",
@@ -13,6 +14,7 @@ const server = new McpServer({
 registerTools(server);
 registerReportTool(server);
 registerPartnerTools(server);
+registerEmailTool(server);
 
 async function main() {
   const transport = new StdioServerTransport();

@@ -18,6 +18,7 @@ presupuestos (budgets) y pronóstico (forecast).
 | `get_cost_forecast` | Pronóstico de costo futuro (Cost Management Forecast API). |
 | `list_budgets` | Lista presupuestos configurados, gasto actual y % consumido. |
 | `generate_cost_report` | Genera un **reporte consolidado** (resumen + todas las secciones anteriores) en Markdown/CSV, y lo guarda en disco. |
+| `send_cost_report_email` | Envía el Panel de Costos (u otro archivo) por correo a destinatarios indicados en el momento — **siempre bajo pedido explícito**, nunca automático. Requiere configurar SMTP (ver `.env.example`). |
 
 ## Requisitos
 
@@ -124,7 +125,10 @@ Code):
       "command": "node",
       "args": ["C:\\Users\\JoséMiguelSobarzo\\Documents\\azure-cost-mcp\\dist\\azure-cost-mcp.bundle.cjs"],
       "env": {
-        "AZURE_SUBSCRIPTION_ID": "<opcional: tu subscriptionId por defecto>"
+        "AZURE_SUBSCRIPTION_ID": "<opcional: tu subscriptionId por defecto>",
+        "SMTP_HOST": "<opcional, solo si vas a usar send_cost_report_email — ver .env.example>",
+        "SMTP_USER": "<opcional>",
+        "SMTP_PASS": "<opcional>"
       }
     }
   }
@@ -147,7 +151,7 @@ El archivo de configuración de Claude Desktop en Windows normalmente está en:
 Ábrelo con un editor de texto, agrega el bloque `"azure-cost": {...}` dentro
 de `"mcpServers"` (créalo si el archivo no existe todavía) y guarda.
 
-Reinicia Claude Desktop y las 9 herramientas deberían aparecer disponibles.
+Reinicia Claude Desktop y las 10 herramientas deberían aparecer disponibles.
 
 ## Ejemplos de uso (una vez conectado en Claude)
 
@@ -161,6 +165,9 @@ Reinicia Claude Desktop y las 9 herramientas deberían aparecer disponibles.
 - *"¿Cómo van mis presupuestos?"* → `list_budgets`
 - *"Proyecta el gasto de los próximos 60 días"* → `get_cost_forecast` con
   `forecastDays`-equivalente vía `from`/`to`
+- *"Mándale el panel de costos a ana@datapro.cl"* → `send_cost_report_email`
+  con `to: "ana@datapro.cl"` y `attachmentPath` apuntando al HTML standalone
+  del panel (requiere SMTP configurado, ver arriba)
 
 ## Notas técnicas
 
