@@ -1,0 +1,12 @@
+node_modules/
+dist/
+reports/
+.env
+*.log
+
+# Datos reales de clientes generados en tiempo de ejecución (no publicar):
+# el schema de ejemplo (schema-ejemplo.json) sí se versiona.
+scripts/today-data.json
+scripts/data-*.json
+scripts/*-dashboard*.html
+scripts/preview-*.html

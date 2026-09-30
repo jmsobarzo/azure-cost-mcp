@@ -1,0 +1,31 @@
+{
+  "name": "azure-cost-mcp",
+  "version": "1.4.0",
+  "description": "Servidor MCP para generar reportería de Azure Cost Management (costos por suscripción, resource group, servicio, tendencias, presupuestos y forecast).",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "azure-cost-mcp": "dist/index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "build:bundle": "esbuild src/index.ts --bundle --platform=node --target=node18 --format=cjs --outfile=dist/azure-cost-mcp.bundle.cjs",
+    "start": "node dist/index.js",
+    "start:bundle": "node dist/azure-cost-mcp.bundle.cjs",
+    "dev": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@azure/identity": "^4.5.0",
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "esbuild": "^0.28.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
